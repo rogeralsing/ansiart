@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Enumeration;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using PuppeteerSharp;
@@ -19,42 +20,51 @@ namespace AsciiArt
     {
         private static async Task Main(string[] args)
         {
+            Console.OutputEncoding = Encoding.UTF8;
+            
             var arg = string.Join("", args);
-            string path;
+            if (arg == "")
+            {
+                arg = ".";
+            }
+            
             if (arg.ToLowerInvariant().StartsWith("http"))
             {
-                await new BrowserFetcher().DownloadAsync(BrowserFetcher.DefaultRevision);
-                var browser = await Puppeteer.LaunchAsync(new LaunchOptions
-                {
-                    Headless = true
-                });
-                var page = await browser.NewPageAsync();
-                await page.GoToAsync(arg);
-                await page.ScreenshotAsync("tmp.png");
-                path = "tmp.png";
+                await RenderWebPage(arg);
+            }
+            else if (Directory.Exists(arg))
+            {
+                RenderDirectory(arg);
             }
             else
             {
-                path = arg;
+                RenderImage(arg,true);
             }
+        }
 
-            if (Directory.Exists(path))
+        private static async Task RenderWebPage(string arg)
+        {
+            await new BrowserFetcher().DownloadAsync(BrowserFetcher.DefaultRevision);
+            var browser = await Puppeteer.LaunchAsync(new LaunchOptions
             {
-                var extensions = new[] {".gif", ".png", ".jpg", ".jpeg"};
-                var files = Directory.GetFiles(path);
-                foreach (var file in files)
-                {
-                    var p = Path.Combine(path, file);
-                    var ext = Path.GetExtension(p);
-                    if (!extensions.Contains(ext)) continue;
-                    
-          
-                    RenderImage(p,false);
-                }
-            }
-            else
+                Headless = true
+            });
+            var page = await browser.NewPageAsync();
+            await page.GoToAsync(arg);
+            await page.ScreenshotAsync("tmp.png");
+            RenderImage("tmp.png", false);
+        }
+
+        private static void RenderDirectory(string arg)
+        {
+            var extensions = new[] {".gif", ".png", ".jpg", ".jpeg",".bmp",".tga"};
+            var files = Directory.GetFiles(arg,"*.*",System.IO.SearchOption.AllDirectories);
+            foreach (var file in files)
             {
-                RenderImage(path,true);
+                var ext = Path.GetExtension(file);
+                if (!extensions.Contains(ext)) continue;
+
+                RenderImage(file, false);
             }
         }
 
@@ -62,14 +72,19 @@ namespace AsciiArt
         {
             using var img = (Image<Rgba32>) Image.Load(path);
 
-            img.Mutate(c => c.Resize(new ResizeOptions()
+            var size = img.Size();
+
+            if (size.Width > 320 || size.Height > 600)
             {
-                Mode = ResizeMode.Max,
-                Size = new Size() { Width = 320, Height = 600 }
-            }));
+                img.Mutate(c => c.Resize(new ResizeOptions()
+                {
+                    Mode = ResizeMode.Max,
+                    Size = new Size() {Width = 320, Height = 600}
+                }));
+            }
 
             Console.WriteLine(path);
-            var size = img.Size();
+            
             Console.WriteLine(size);
 
             if (img.Frames.Count == 1 || !animate)
